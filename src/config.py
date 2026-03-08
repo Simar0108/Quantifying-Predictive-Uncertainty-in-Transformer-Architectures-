@@ -27,6 +27,11 @@ WIKITEXT_MAX_SAMPLES = 2000  # cap OOD eval size
 CORRUPTION_PROB = 0.15  # probability per character to apply a corruption
 CORRUPTION_TYPES = ("typo", "swap", "insert")  # character-level noise
 
-# Training (for later use)
+# Training
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_MAX_LENGTH = 128
+DEFAULT_EPOCHS = 3
+DEFAULT_LR = 2e-5
+CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+DEFAULT_CHECKPOINT_NAME = "bert_sst2"

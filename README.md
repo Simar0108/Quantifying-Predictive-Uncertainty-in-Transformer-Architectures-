@@ -82,6 +82,15 @@ better calibrated than a standard BERT baseline.
 non-sentiment text or adversarial noise.
 3. Trust-Score Visualization: A demonstration showing how high-variance
 tokens identify the source of model confusion.
+## How to run
+
+1. **Environment:** `pip install -r requirements.txt`
+2. **Data check:** `python scripts/run_data_demo.py` (downloads SST-2, Wikitext-103; prints samples).
+3. **Train BERT on SST-2:** `python scripts/train.py --out checkpoints/bert_sst2`
+4. **MC Dropout inference:** `python scripts/eval_mc_dropout.py --checkpoint checkpoints/bert_sst2 --out results/mc_predictions.npz`
+5. **Calibration:** `python scripts/eval_calibration.py --predictions results/mc_predictions.npz --out results/calibration.npz`
+6. **Plots:** Open `notebooks/02_results.ipynb` and run (reliability diagram, OOD variance).
+
 References
 [1] Vaswani, A., et al. (2017) Attention is all you need. Advances in Neural Information
 Processing Systems.
