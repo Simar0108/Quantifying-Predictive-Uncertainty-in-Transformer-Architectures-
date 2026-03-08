@@ -90,7 +90,7 @@ def corrupt_text(
 
 def get_sst2_dataset(split: str):
     """Load SST-2 (Stanford Sentiment Treebank) for in-distribution. Splits: train, validation, test."""
-    return load_dataset("glue", "sst2", split=split, trust_remote_code=True)
+    return load_dataset("glue", "sst2", split=split)
 
 
 def get_wikitext103_dataset(
@@ -100,7 +100,7 @@ def get_wikitext103_dataset(
     """
     Load Wikitext-103 as OOD (non-sentiment text). Returns dataset with 'text' and dummy 'label' -1.
     """
-    ds = load_dataset("wikitext", config.WIKITEXT103_SUBSET, split=split, trust_remote_code=True)
+    ds = load_dataset("wikitext", config.WIKITEXT103_SUBSET, split=split)
     # Wikitext has 'text'; filter empty lines and take contiguous text as "samples"
     text_key = "text" if "text" in ds.column_names else "paragraph"
     lines = [row[text_key] for row in ds if row[text_key].strip()]
@@ -120,7 +120,10 @@ def get_corrupted_sst2_dataset(split: str = "test", prob: float = 0.15, seed: Op
         idx = ex.get("idx", 0)
         if isinstance(idx, (list, np.ndarray)):
             idx = int(idx[0]) if len(idx) else 0
-        return {"sentence": corrupt_text(ex["sentence"], prob=prob, seed=seed + idx)}
+        return {
+            "sentence": corrupt_text(ex["sentence"], prob=prob, seed=seed + idx),
+            "label": ex["label"],
+        }
 
     return ds.map(map_fn, desc="corrupt")
 
@@ -179,7 +182,7 @@ def get_id_loaders(
         shuffle=True,
         collate_fn=collate,
         num_workers=0,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
     )
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
@@ -214,7 +217,3 @@ def get_corrupted_sst2_loader(
     def collate(batch):
         return _collate_sentiment_batch(batch, tokenizer, max_length)
     return DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
-</think>
-Fixing the corrupted-SST-2 map to preserve labels and other columns.
-<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>
-StrReplace
