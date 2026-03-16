@@ -57,7 +57,7 @@ def main():
         model_name=config.BERT_MODEL_NAME,
         num_labels=config.NUM_LABELS,
     )
-    ckpt = torch.load(args.checkpoint, map_location="cpu")
+    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     base.load_state_dict(ckpt["model_state_dict"])
     model = MCDropoutWrapper(base, num_samples=args.T).to(device)
     model.eval()
