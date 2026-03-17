@@ -62,18 +62,19 @@ def main():
     model = MCDropoutWrapper(base, num_samples=args.T).to(device)
     model.eval()
 
-    _, _, test_loader = get_id_loaders(
+    # Use validation split for ID/corrupted: GLUE SST-2 test set has hidden labels (-1).
+    _, val_loader, _ = get_id_loaders(
         tokenizer=tokenizer, batch_size=args.batch_size, max_length=args.max_length
     )
     wikitext_loader = get_ood_wikitext_loader(
         tokenizer=tokenizer, batch_size=args.batch_size, max_length=args.max_length, max_samples=args.max_ood_samples
     )
     corrupted_loader = get_corrupted_sst2_loader(
-        tokenizer=tokenizer, batch_size=args.batch_size, max_length=args.max_length
+        tokenizer=tokenizer, batch_size=args.batch_size, max_length=args.max_length, split=config.SST2_SPLIT_VAL
     )
 
-    print("Running MC Dropout on ID (SST-2 test)...")
-    id_mean, id_var, id_pred, id_labels = run_mc_inference(model, test_loader, device, desc="ID")
+    print("Running MC Dropout on ID (SST-2 validation)...")
+    id_mean, id_var, id_pred, id_labels = run_mc_inference(model, val_loader, device, desc="ID")
     print("Running MC Dropout on OOD (Wikitext-103)...")
     ood_mean, ood_var, ood_pred, _ = run_mc_inference(model, wikitext_loader, device, desc="OOD Wikitext")
     print("Running MC Dropout on corrupted SST-2...")

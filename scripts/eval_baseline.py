@@ -64,12 +64,13 @@ def main():
     model = model.to(device)
     model.eval()
 
-    _, _, test_loader = get_id_loaders(
+    # Use validation split for ID eval: GLUE SST-2 test set has hidden labels (-1), so use val for accuracy/calibration.
+    _, val_loader, _ = get_id_loaders(
         tokenizer=tokenizer, batch_size=args.batch_size, max_length=args.max_length
     )
 
-    print("Running baseline (standard BERT) on ID (SST-2 test)...")
-    id_mean, id_pred, id_labels = run_baseline_inference(model, test_loader, device, desc="ID")
+    print("Running baseline (standard BERT) on ID (SST-2 validation)...")
+    id_mean, id_pred, id_labels = run_baseline_inference(model, val_loader, device, desc="ID")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
