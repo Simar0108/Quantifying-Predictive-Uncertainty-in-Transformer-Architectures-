@@ -1,0 +1,24 @@
+# Checkpoints and large model files (train locally; see README)
+checkpoints/
+*.pt
+*.pth
+*.bin
+
+# Results (optional: ignore if you prefer to track)
+# results/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.DS_Store
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
