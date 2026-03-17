@@ -17,6 +17,7 @@ class MCOutput:
     var_probs: torch.Tensor
     mean_positive: torch.Tensor
     var_positive: torch.Tensor
+    var_logit_positive: torch.Tensor  # variance of positive-class logit across MC samples (often more discriminative for OOD)
 
 
 class MCDropoutWrapper(nn.Module):
@@ -65,13 +66,15 @@ class MCDropoutWrapper(nn.Module):
         mean_probs = probs_stack.mean(dim=0)  # (B, C)
         var_probs = probs_stack.var(dim=0)   # (B, C)
 
-        # For binary: variance of P(positive) is the key uncertainty signal
+        # For binary: variance of P(positive) and of positive-class logit
         if mean_probs.size(-1) == 2:
             mean_pos = mean_probs[:, 1]
             var_pos = var_probs[:, 1]
+            var_logit_pos = logits_stack[:, :, 1].var(dim=0)  # (B,)
         else:
             mean_pos = mean_probs
             var_pos = var_probs
+            var_logit_pos = logits_stack.var(dim=0).mean(dim=-1)
 
         return MCOutput(
             logits=logits_stack.mean(dim=0),
@@ -79,6 +82,7 @@ class MCDropoutWrapper(nn.Module):
             var_probs=var_probs,
             mean_positive=mean_pos,
             var_positive=var_pos,
+            var_logit_positive=var_logit_pos,
         )
 
     def predict_with_uncertainty(

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,20 +21,29 @@ from src.data import get_tokenizer, get_id_loaders, get_ood_wikitext_loader, get
 from src.models import BERTSentimentClassifier, MCDropoutWrapper
 
 
+def set_mc_dropout_prob(model: nn.Module, p: float):
+    """Set dropout probability for all Dropout layers (for MC inference only). Use p > 0.1 to strengthen uncertainty signal."""
+    for m in model.modules():
+        if isinstance(m, nn.Dropout):
+            m.p = p
+
+
 def run_mc_inference(model, loader, device, desc="Eval"):
-    mean_pos_list, var_pos_list, preds_list, labels_list = [], [], [], []
+    mean_pos_list, var_pos_list, var_logit_list, preds_list, labels_list = [], [], [], [], []
     for batch in tqdm(loader, desc=desc, leave=False):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         out = model(input_ids=input_ids, attention_mask=attention_mask)
         mean_pos_list.append(out.mean_positive.cpu().numpy())
         var_pos_list.append(out.var_positive.cpu().numpy())
+        var_logit_list.append(out.var_logit_positive.cpu().numpy())
         preds_list.append(out.mean_probs.argmax(dim=-1).cpu().numpy())
         if "labels" in batch:
             labels_list.append(batch["labels"].numpy())
     return (
         np.concatenate(mean_pos_list),
         np.concatenate(var_pos_list),
+        np.concatenate(var_logit_list),
         np.concatenate(preds_list),
         np.concatenate(labels_list) if labels_list else None,
     )
@@ -43,6 +53,7 @@ def main():
     parser = argparse.ArgumentParser(description="MC Dropout inference on ID and OOD")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to saved BERT checkpoint")
     parser.add_argument("--T", type=int, default=30, help="Number of MC samples")
+    parser.add_argument("--mc_dropout_prob", type=float, default=0.1, help="Dropout p during MC inference (try 0.2 for stronger variance signal)")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--max_length", type=int, default=config.DEFAULT_MAX_LENGTH)
     parser.add_argument("--max_ood_samples", type=int, default=config.WIKITEXT_MAX_SAMPLES)
@@ -59,6 +70,7 @@ def main():
     )
     ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     base.load_state_dict(ckpt["model_state_dict"])
+    set_mc_dropout_prob(base, args.mc_dropout_prob)
     model = MCDropoutWrapper(base, num_samples=args.T).to(device)
     model.eval()
 
@@ -74,11 +86,11 @@ def main():
     )
 
     print("Running MC Dropout on ID (SST-2 validation)...")
-    id_mean, id_var, id_pred, id_labels = run_mc_inference(model, val_loader, device, desc="ID")
+    id_mean, id_var, id_var_logit, id_pred, id_labels = run_mc_inference(model, val_loader, device, desc="ID")
     print("Running MC Dropout on OOD (Wikitext-103)...")
-    ood_mean, ood_var, ood_pred, _ = run_mc_inference(model, wikitext_loader, device, desc="OOD Wikitext")
+    ood_mean, ood_var, ood_var_logit, ood_pred, _ = run_mc_inference(model, wikitext_loader, device, desc="OOD Wikitext")
     print("Running MC Dropout on corrupted SST-2...")
-    corr_mean, corr_var, corr_pred, corr_labels = run_mc_inference(model, corrupted_loader, device, desc="Corrupted")
+    corr_mean, corr_var, corr_var_logit, corr_pred, corr_labels = run_mc_inference(model, corrupted_loader, device, desc="Corrupted")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,23 +98,26 @@ def main():
         out_path,
         id_mean_positive=id_mean,
         id_var_positive=id_var,
+        id_var_logit_positive=id_var_logit,
         id_pred=id_pred,
         id_labels=id_labels,
         ood_wikitext_mean=ood_mean,
         ood_wikitext_var=ood_var,
+        ood_wikitext_var_logit=ood_var_logit,
         ood_wikitext_pred=ood_pred,
         corr_mean_positive=corr_mean,
         corr_var_positive=corr_var,
+        corr_var_logit_positive=corr_var_logit,
         corr_pred=corr_pred,
         corr_labels=corr_labels,
     )
     print(f"Saved to {out_path}")
-    print(f"ID    mean(var) = {id_var.mean():.4f}  (n={len(id_var)})")
-    print(f"OOD   mean(var) = {ood_var.mean():.4f}  (n={len(ood_var)})")
-    print(f"Corr  mean(var) = {corr_var.mean():.4f}  (n={len(corr_var)})")
+    print(f"ID    mean(var_prob) = {id_var.mean():.4f}  mean(var_logit) = {id_var_logit.mean():.4f}  (n={len(id_var)})")
+    print(f"OOD   mean(var_prob) = {ood_var.mean():.4f}  mean(var_logit) = {ood_var_logit.mean():.4f}  (n={len(ood_var)})")
+    print(f"Corr  mean(var_prob) = {corr_var.mean():.4f}  mean(var_logit) = {corr_var_logit.mean():.4f}  (n={len(corr_var)})")
     if id_var.mean() > 0:
-        print(f"OOD/ID variance ratio = {ood_var.mean() / id_var.mean():.2f}x")
-        print(f"Corr/ID variance ratio = {corr_var.mean() / id_var.mean():.2f}x")
+        print(f"OOD/ID  var_prob ratio = {ood_var.mean() / id_var.mean():.2f}x   var_logit ratio = {ood_var_logit.mean() / id_var_logit.mean():.2f}x")
+        print(f"Corr/ID var_prob ratio = {corr_var.mean() / id_var.mean():.2f}x   var_logit ratio = {corr_var_logit.mean() / id_var_logit.mean():.2f}x")
 
 
 if __name__ == "__main__":
